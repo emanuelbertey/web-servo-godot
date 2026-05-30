@@ -81,7 +81,10 @@ jobs:
           MOZTOOLS_URL="https://github.com/servo/servo-build-deps/releases/download/msvc-deps/moztools-4.0.zip"
           curl -L -o moztools.zip "$MOZTOOLS_URL"
           7z x moztools.zip -o"$HOME/moztools"
-          echo "MOZTOOLS_PATH=$HOME/moztools" >> $GITHUB_ENV
+          ls -R "$HOME/moztools"
+          echo "MOZTOOLS_PATH=$HOME/moztools/msys/bin;$HOME/moztools/bin" >> $GITHUB_ENV
+          echo "$HOME/moztools/msys/bin" >> $GITHUB_PATH
+          echo "$HOME/moztools/bin" >> $GITHUB_PATH
 
       - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
@@ -103,6 +106,14 @@ jobs:
         with:
           ndk-version: r27c
 
+      - name: Set Android API level
+        if: contains(matrix.target, 'android')
+        run: |
+          echo "ANDROID_NATIVE_API_LEVEL=21" >> $GITHUB_ENV
+          echo "ANDROID_PLATFORM=android-21" >> $GITHUB_ENV
+          echo "ANDROID_API_LEVEL=21" >> $GITHUB_ENV
+          echo "MOZJS_ANDROID_VERSION=21" >> $GITHUB_ENV
+
       - name: Build (desktop)
         if: "!contains(matrix.target, 'android')"
         shell: bash
@@ -112,9 +123,6 @@ jobs:
       - name: Build (Android)
         if: contains(matrix.target, 'android')
         shell: bash
-        env:
-          ANDROID_PLATFORM: android-21
-          ANDROID_NATIVE_API_LEVEL: "21"
         run: |
           cargo ndk -t ${{ matrix.target }} build --release --verbose
 
