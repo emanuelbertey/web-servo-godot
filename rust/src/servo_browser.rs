@@ -11,7 +11,7 @@ use url::Url;
 
 use crate::delegate::{BrowserServoDelegate, BrowserWebViewDelegate};
 use crate::input_map::map_key;
-use crate::shared::{BrowserWaker, SharedState, SignalEvent};
+use crate::shared::{BrowserWaker, PendingControl, SharedState, SignalEvent};
 
 #[derive(GodotClass)]
 #[class(base=Node)]
@@ -78,6 +78,27 @@ impl WebViewBrowser {
 
     #[signal]
     fn authentication_requested(realm: String);
+
+    #[signal]
+    fn dialog_alert(message: String);
+
+    #[signal]
+    fn dialog_confirm(message: String);
+
+    #[signal]
+    fn dialog_prompt(message: String, default_value: String);
+
+    #[signal]
+    fn file_picker_request(filter_patterns: Array, allow_multiple: bool);
+
+    #[signal]
+    fn select_element_request(options: Array);
+
+    #[signal]
+    fn color_picker_request(current_color: int);
+
+    #[signal]
+    fn context_menu_request(x: int, y: int, items: Array);
 
     #[func]
     fn get_texture(&self) -> Gd<ImageTexture> {
@@ -297,6 +318,103 @@ impl WebViewBrowser {
             });
         }
     }
+
+    #[func]
+    fn respond_alert(&self) {
+        let control = self.state.borrow_mut().pending_control.take();
+        if let Some(PendingControl::Alert(alert)) = control {
+            alert.confirm();
+        }
+    }
+
+    #[func]
+    fn respond_confirm(&self, accepted: bool) {
+        let control = self.state.borrow_mut().pending_control.take();
+        if let Some(PendingControl::Confirm(confirm)) = control {
+            if accepted {
+                confirm.confirm();
+            } else {
+                confirm.dismiss();
+            }
+        }
+    }
+
+    #[func]
+    fn respond_prompt(&self, value: GodotString, accepted: bool) {
+        let control = self.state.borrow_mut().pending_control.take();
+        if let Some(PendingControl::Prompt(mut prompt)) = control {
+            prompt.set_current_value(&value.to_string());
+            if accepted {
+                prompt.confirm();
+            } else {
+                prompt.dismiss();
+            }
+        }
+    }
+
+    #[func]
+    fn respond_file_picker(&self, paths: Array) {
+        let control = self.state.borrow_mut().pending_control.take();
+        if let Some(PendingControl::FilePicker(mut fp)) = control {
+            let rust_paths: Vec<std::path::PathBuf> = paths
+                .iter()
+                .filter_map(|v| v.try_to::<GodotString>().ok())
+                .map(|s| std::path::PathBuf::from(s.to_string()))
+                .collect();
+            fp.select(&rust_paths);
+            fp.submit();
+        }
+    }
+
+    #[func]
+    fn respond_file_picker_dismiss(&self) {
+        let control = self.state.borrow_mut().pending_control.take();
+        if let Some(PendingControl::FilePicker(fp)) = control {
+            fp.dismiss();
+        }
+    }
+
+    #[func]
+    fn respond_select(&self, index: i32) {
+        let control = self.state.borrow_mut().pending_control.take();
+        if let Some(PendingControl::SelectElement(mut sel)) = control {
+            if index >= 0 {
+                sel.select(Some(index as usize));
+            } else {
+                sel.select(None);
+            }
+            sel.submit();
+        }
+    }
+
+    #[func]
+    fn respond_color_picker(&self, color: i32) {
+        let control = self.state.borrow_mut().pending_control.take();
+        if let Some(PendingControl::ColorPicker(mut cp)) = control {
+            let r = ((color >> 16) & 0xFF) as u8;
+            let g = ((color >> 8) & 0xFF) as u8;
+            let b = (color & 0xFF) as u8;
+            cp.select(Some(servo::embedder_traits::RgbColor { r, g, b }));
+            cp.submit();
+        }
+    }
+
+    #[func]
+    fn respond_context_menu(&self, action_index: i32) {
+        let control = self.state.borrow_mut().pending_control.take();
+        if let Some(PendingControl::ContextMenu(ctx)) = control {
+            if action_index >= 0 {
+                let items = ctx.items().to_vec();
+                if let Some(item) = items.get(action_index as usize) {
+                    ctx.select(servo::embedder_traits::ContextMenuAction::from(item.clone()));
+                } else {
+                    ctx.dismiss();
+                }
+            } else {
+                ctx.dismiss();
+            }
+        }
+    }
 }
 
 #[godot_api]
@@ -449,6 +567,30 @@ impl WebViewBrowser {
                 }
                 SignalEvent::AuthenticationRequested(r) => {
                     base.emit_signal("authentication_requested", &[r.to_variant()])
+                }
+                SignalEvent::DialogAlert(msg) => {
+                    base.emit_signal("dialog_alert", &[msg.to_variant()])
+                }
+                SignalEvent::DialogConfirm(msg) => {
+                    base.emit_signal("dialog_confirm", &[msg.to_variant()])
+                }
+                SignalEvent::DialogPrompt(msg, default) => {
+                    base.emit_signal("dialog_prompt", &[msg.to_variant(), default.to_variant()])
+                }
+                SignalEvent::FilePickerRequest(patterns, multi) => {
+                    let arr: Array = patterns.iter().map(|s| s.to_variant()).collect();
+                    base.emit_signal("file_picker_request", &[arr.to_variant(), multi.to_variant()])
+                }
+                SignalEvent::SelectElementRequest(options) => {
+                    let arr: Array = options.iter().map(|s| s.to_variant()).collect();
+                    base.emit_signal("select_element_request", &[arr.to_variant()])
+                }
+                SignalEvent::ColorPickerRequest(color) => {
+                    base.emit_signal("color_picker_request", &[color.to_variant()])
+                }
+                SignalEvent::ContextMenuRequest(x, y, items) => {
+                    let arr: Array = items.iter().map(|s| s.to_variant()).collect();
+                    base.emit_signal("context_menu_request", &[x.to_variant(), y.to_variant(), arr.to_variant()])
                 }
             }
         }

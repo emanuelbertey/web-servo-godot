@@ -4,7 +4,7 @@ use std::rc::Rc;
 use servo::embedder_traits::resources::ResourceReader;
 use servo::*;
 
-use crate::shared::{SharedState, SignalEvent};
+use crate::shared::{PendingControl, SharedState, SignalEvent};
 
 pub struct BrowserWebViewDelegate {
     pub state: Rc<RefCell<SharedState>>,
@@ -145,7 +145,71 @@ impl WebViewDelegate for BrowserWebViewDelegate {
         req.deny();
     }
     fn show_bluetooth_device_dialog(&self, _wv: WebView, _req: BluetoothDeviceSelectionRequest) {}
-    fn show_embedder_control(&self, _wv: WebView, _ctl: EmbedderControl) {}
+    fn show_embedder_control(&self, _wv: WebView, control: EmbedderControl) {
+        use EmbedderControl::*;
+        match control {
+            SimpleDialog(simple) => {
+                use servo::webview_delegate::SimpleDialog::*;
+                match simple {
+                    Alert(alert) => {
+                        let msg = alert.message().to_string();
+                        self.state.borrow_mut().pending_control = Some(PendingControl::Alert(alert));
+                        self.state.borrow_mut().events.push(SignalEvent::DialogAlert(msg));
+                    }
+                    Confirm(confirm) => {
+                        let msg = confirm.message().to_string();
+                        self.state.borrow_mut().pending_control = Some(PendingControl::Confirm(confirm));
+                        self.state.borrow_mut().events.push(SignalEvent::DialogConfirm(msg));
+                    }
+                    Prompt(prompt) => {
+                        let msg = prompt.message().to_string();
+                        let default = prompt.current_value().to_string();
+                        self.state.borrow_mut().pending_control = Some(PendingControl::Prompt(prompt));
+                        self.state.borrow_mut().events.push(SignalEvent::DialogPrompt(msg, default));
+                    }
+                }
+            }
+            FilePicker(fp) => {
+                let patterns: Vec<String> = fp.filter_patterns()
+                    .iter()
+                    .map(|p| format!("{:?}", p))
+                    .collect();
+                let multi = fp.allow_select_multiple();
+                self.state.borrow_mut().pending_control = Some(PendingControl::FilePicker(fp));
+                self.state.borrow_mut().events.push(SignalEvent::FilePickerRequest(patterns, multi));
+            }
+            SelectElement(sel) => {
+                let options: Vec<String> = sel.options()
+                    .iter()
+                    .map(|o| format!("{:?}", o))
+                    .collect();
+                self.state.borrow_mut().pending_control = Some(PendingControl::SelectElement(sel));
+                self.state.borrow_mut().events.push(SignalEvent::SelectElementRequest(options));
+            }
+            ColorPicker(color) => {
+                let current = color.current_color().map(|c| {
+                    let rgb = c;
+                    ((rgb.r as u32) << 16) | ((rgb.g as u32) << 8) | (rgb.b as u32)
+                });
+                self.state.borrow_mut().pending_control = Some(PendingControl::ColorPicker(color));
+                self.state.borrow_mut().events.push(SignalEvent::ColorPickerRequest(current));
+            }
+            InputMethod(_ime) => {
+                // IME is handled internally, no signal needed
+            }
+            ContextMenu(ctx) => {
+                let items: Vec<String> = ctx.items()
+                    .iter()
+                    .map(|i| format!("{:?}", i))
+                    .collect();
+                let pos = ctx.position();
+                self.state.borrow_mut().pending_control = Some(PendingControl::ContextMenu(ctx));
+                self.state.borrow_mut().events.push(
+                    SignalEvent::ContextMenuRequest(pos.origin.x, pos.origin.y, items)
+                );
+            }
+        }
+    }
     fn hide_embedder_control(&self, _wv: WebView, _id: EmbedderControlId) {}
     fn load_web_resource(&self, _wv: WebView, _load: WebResourceLoad) {}
     fn show_notification(&self, _wv: WebView, _notif: Notification) {}

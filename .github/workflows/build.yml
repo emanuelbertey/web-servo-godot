@@ -74,6 +74,22 @@ jobs:
         run: |
           brew install pkg-config
 
+      - name: Setup MozTools (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          MOZTOOLS_URL="https://github.com/servo/servo-build-deps/releases/download/msvc-deps/moztools-4.0.zip"
+          curl -L -o moztools.zip "$MOZTOOLS_URL"
+          7z x moztools.zip -o"$HOME/moztools"
+          echo "MOZTOOLS_PATH=$HOME/moztools" >> $GITHUB_ENV
+
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          choco install llvm -y
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\lib" >> $GITHUB_ENV
+
       - name: Install cargo-ndk
         if: contains(matrix.target, 'android')
         run: |
@@ -96,6 +112,9 @@ jobs:
       - name: Build (Android)
         if: contains(matrix.target, 'android')
         shell: bash
+        env:
+          ANDROID_PLATFORM: android-21
+          ANDROID_NATIVE_API_LEVEL: "21"
         run: |
           cargo ndk -t ${{ matrix.target }} build --release --verbose
 
