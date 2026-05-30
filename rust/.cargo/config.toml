@@ -1,0 +1,5 @@
+[env]
+# Workaround for glslopt incompatibility with MinGW headers
+# Rename the conflicting static timespec_get definition in glslopt's
+# bundled c11/threads_win32.h to avoid conflict with MinGW's time.h
+CFLAGS_x86_64-pc-windows-gnu = "-Dtimespec_get=glslopt_timespec_get"

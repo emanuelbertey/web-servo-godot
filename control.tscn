@@ -1,0 +1,15 @@
+[gd_scene format=3 uid="uid://ctga5qtspq6c7"]
+
+[ext_resource type="Texture2D" uid="uid://bpuqqtw0hmggi" path="res://icon.svg" id="1_0fbet"]
+
+[node name="Control" type="Control" unique_id=598624113]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Player" type="Player" parent="." unique_id=1981714447]
+position = Vector2(206, 109)
+texture = ExtResource("1_0fbet")

@@ -1,0 +1,16 @@
+[package]
+name = "rust_gdextension"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+godot = "0.4"
+servo = { version = "0.1", default-features = false, features = ["clipboard"] }
+url = "2"
+dpi = "0.1"
+euclid = "0.22"
+keyboard-types = "0.8"
+image = "0.25"
