@@ -18,11 +18,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             bin: librust_gdextension.so
 
-          - runner: windows-latest
+          - runner: windows-2022
             target: x86_64-pc-windows-msvc
             bin: rust_gdextension.dll
 
@@ -34,11 +34,11 @@ jobs:
             target: aarch64-apple-darwin
             bin: librust_gdextension.dylib
 
-          - runner: ubuntu-latest
+          - runner: ubuntu-22.04
             target: aarch64-linux-android
             bin: librust_gdextension.so
 
-          - runner: ubuntu-latest
+          - runner: ubuntu-22.04
             target: armv7-linux-androideabi
             bin: librust_gdextension.so
 
@@ -50,6 +50,7 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # Linux
       - name: Install Linux dependencies
         if: runner.os == 'Linux' && !contains(matrix.target, 'android')
         run: |
@@ -67,32 +68,31 @@ jobs:
             libegl1-mesa-dev \
             libgles2-mesa-dev \
             libwayland-dev \
-            pkg-config
+            pkg-config \
+            llvm-14-dev \
+            libclang-14-dev \
+            clang-14
 
+      - name: Set Linux env
+        if: runner.os == 'Linux' && !contains(matrix.target, 'android')
+        run: |
+          echo "LIBCLANG_PATH=/usr/lib/llvm-14/lib" >> $GITHUB_ENV
+
+      # macOS
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
           brew install pkg-config
 
-      - name: Setup MozTools (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          MOZTOOLS_URL="https://github.com/servo/servo-build-deps/releases/download/msvc-deps/moztools-4.0.zip"
-          curl -L -o moztools.zip "$MOZTOOLS_URL"
-          7z x moztools.zip -o"$HOME/moztools"
-          ls -R "$HOME/moztools"
-          echo "MOZTOOLS_PATH=$HOME/moztools/msys/bin;$HOME/moztools/bin" >> $GITHUB_ENV
-          echo "$HOME/moztools/msys/bin" >> $GITHUB_PATH
-          echo "$HOME/moztools/bin" >> $GITHUB_PATH
-
+      # Windows
       - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: |
           choco install llvm -y
-          echo "LIBCLANG_PATH=C:\Program Files\LLVM\lib" >> $GITHUB_ENV
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
 
+      # Android
       - name: Install cargo-ndk
         if: contains(matrix.target, 'android')
         run: |
@@ -104,25 +104,29 @@ jobs:
         if: contains(matrix.target, 'android')
         uses: nttld/setup-ndk@v1.5.0
         with:
-          ndk-version: r27c
+          ndk-version: r28b
 
-      - name: Set Android API level
+      - name: Set Android env
         if: contains(matrix.target, 'android')
         run: |
           echo "ANDROID_NATIVE_API_LEVEL=21" >> $GITHUB_ENV
           echo "ANDROID_PLATFORM=android-21" >> $GITHUB_ENV
           echo "ANDROID_API_LEVEL=21" >> $GITHUB_ENV
-          echo "MOZJS_ANDROID_VERSION=21" >> $GITHUB_ENV
 
+      # Build
       - name: Build (desktop)
         if: "!contains(matrix.target, 'android')"
         shell: bash
+        env:
+          MOZJS_ARCHIVE: https://github.com/servo/mozjs/releases
         run: |
           cargo build --verbose --release --target ${{ matrix.target }}
 
       - name: Build (Android)
         if: contains(matrix.target, 'android')
         shell: bash
+        env:
+          MOZJS_ARCHIVE: https://github.com/servo/mozjs/releases
         run: |
           cargo ndk -t ${{ matrix.target }} build --release --verbose
 
