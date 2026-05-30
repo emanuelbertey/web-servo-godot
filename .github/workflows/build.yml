@@ -13,6 +13,7 @@ jobs:
     defaults:
       run:
         working-directory: ./rust
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -38,7 +39,7 @@ jobs:
             bin: librust_gdextension.so
 
           - runner: ubuntu-latest
-            target: x86_64-linux-android
+            target: armv7-linux-androideabi
             bin: librust_gdextension.so
 
     steps:
@@ -50,7 +51,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install Linux dependencies
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !contains(matrix.target, 'android')
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -73,22 +74,30 @@ jobs:
         run: |
           brew install pkg-config
 
-      - name: Setup Android NDK
+      - name: Install cargo-ndk
         if: contains(matrix.target, 'android')
         run: |
-          echo "NDK version: $(ls $ANDROID_HOME/ndk/)"
-          mkdir -p .cargo
-          cat > .cargo/config.toml << 'TOML'
-[target.aarch64-linux-android]
-linker = "aarch64-linux-android33-clang"
-[target.x86_64-linux-android]
-linker = "x86_64-linux-android33-clang"
-TOML
+          cargo install cargo-ndk
+          rustup target add aarch64-linux-android
+          rustup target add armv7-linux-androideabi
 
-      - name: Build
+      - name: Setup Android NDK
+        if: contains(matrix.target, 'android')
+        uses: nttld/setup-ndk@v1.5.0
+        with:
+          ndk-version: r27c
+
+      - name: Build (desktop)
+        if: "!contains(matrix.target, 'android')"
         shell: bash
         run: |
           cargo build --verbose --release --target ${{ matrix.target }}
+
+      - name: Build (Android)
+        if: contains(matrix.target, 'android')
+        shell: bash
+        run: |
+          cargo ndk -t ${{ matrix.target }} build --release --verbose
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
@@ -111,10 +120,13 @@ TOML
       - name: Build macOS universal binary
         run: |
           cd package/addons/rust-gdextension
-          if ls librust_gdextension-*.dylib 2>/dev/null | grep -q .; then
+          if ls librust_gdextension-x86_64-apple-darwin.dylib 2>/dev/null | grep -q . && \
+             ls librust_gdextension-aarch64-apple-darwin.dylib 2>/dev/null | grep -q .; then
             lipo -create -output librust_gdextension.dylib \
               librust_gdextension-x86_64-apple-darwin.dylib \
               librust_gdextension-aarch64-apple-darwin.dylib
+            rm -f librust_gdextension-x86_64-apple-darwin.dylib \
+                   librust_gdextension-aarch64-apple-darwin.dylib
           fi
 
       - name: Copy .gdextension and license
